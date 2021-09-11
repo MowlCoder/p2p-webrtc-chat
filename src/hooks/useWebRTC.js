@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useRef} from "react";
+import freeice from 'freeice';
 import useStateWithCallback from "./useStateWithCallback";
 import socket from "../socket";
 import ACTIONS from './../socket/actions';
@@ -19,6 +20,56 @@ export default function useWebRTC(roomID) {
     const peerMediaElements = useRef({
         [LOCAL_VIDEO]: null,
     });
+
+    useEffect(() => {
+        async function handleNewPeer({ peerID, createOffer }) {
+            if (peerID in peerConnections.current) {
+                return console.warn(`Already connected to peer ${peerID}`);
+            }
+
+            peerConnections.current[peerID] = new RTCPeerConnection({
+                iceServers: freeice(),
+            });
+
+            peerConnections.current[peerID].onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit(ACTIONS.RELAY_ICE, {
+                        peerID,
+                        iceCandidate: event.candidate,
+                    });
+                }
+            }
+
+            let tracksNumber = 0;
+
+            peerConnections.current[peerID].ontrack = ({ streams: [remoteStream] }) => {
+                tracksNumber++;
+
+                // video + audio received
+                if (tracksNumber === 2) {
+                    addNewClient(peerID, () => {
+                        peerMediaElements.current[peerID].srcObject = remoteStream;
+                    });
+                }
+            }
+
+            localMediaStream.current.getTracks().forEach((track) => {
+                peerConnections.current[peerID].addTrack(track, localMediaStream.current);
+            });
+
+            if (createOffer) {
+                const offer = await peerConnections.current[peerID].createOffer();
+                await peerConnections.current[peerID].setLocalDescription(offer);
+
+                socket.emit(ACTIONS.RELAY_SDP, {
+                    peerID,
+                    sessionDescription: offer,
+                });
+            }
+        }
+
+        socket.on(ACTIONS.ADD_PEER, handleNewPeer);
+    }, []);
 
     useEffect(() => {
         async function startCapture() {
