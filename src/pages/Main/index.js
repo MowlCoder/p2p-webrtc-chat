@@ -10,15 +10,15 @@ export default function Main() {
     const rootNode = useRef();
 
     useEffect(() => {
-        socket.on(ACTIONS.SHARE_ROOMS, ({ rooms = [] } = {}) => {
+        socket.on(ACTIONS.SHARE_ROOMS, ({rooms = []} = {}) => {
             if (rootNode.current) {
                 updateRooms(rooms);
             }
-        })
+        });
     }, []);
 
     return (
-        <div>
+        <div ref={rootNode}>
             <h1>Available Rooms</h1>
 
             <ul>{
